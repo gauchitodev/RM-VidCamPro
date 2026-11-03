@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cámara propia: grabar y cambiar de lente trasera sin cortar. Versión 1. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.gauchito.camara">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <application android:label="@string/nombre" android:icon="@drawable/icono" android:allowBackup="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <activity android:name=".Camara" android:exported="true"
+            android:screenOrientation="portrait" android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".Detector" android:exported="false" />
+    </application>
+</manifest>

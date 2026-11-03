@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lente con aro y el punto rojo de grabar (zona segura: círculo de 66 dp al centro). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- aro exterior -->
+    <path android:fillColor="#00000000" android:strokeColor="#F2F2F2" android:strokeWidth="4"
+        android:pathData="M54,30 a24,24 0 1,0 0.01,0 z" />
+    <!-- vidrio -->
+    <path android:fillColor="#2B3A45"
+        android:pathData="M54,37 a17,17 0 1,0 0.01,0 z" />
+    <path android:fillColor="#0E1417"
+        android:pathData="M54,44 a10,10 0 1,0 0.01,0 z" />
+    <!-- reflejo -->
+    <path android:fillColor="#7FA8C2"
+        android:pathData="M47,46 a3.2,3.2 0 1,0 0.01,0 z" />
+    <!-- punto de grabar -->
+    <path android:fillColor="#E53935"
+        android:pathData="M73,31 a5.5,5.5 0 1,0 0.01,0 z" />
+</vector>
