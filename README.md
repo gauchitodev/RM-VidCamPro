@@ -153,6 +153,10 @@ Working and in daily use, still being polished. On the list:
 The code (identifiers and comments) is in Spanish, and so is the UI. Everything that
 matters for understanding how it works is explained above.
 
+## License
+
+[MIT](LICENSE). Use it, change it, share it.
+
 ## Disclaimer
 
 Not affiliated with, or endorsed by, Nubia, RedMagic, ZTE or Qualcomm. The vendor session
