@@ -1,0 +1,14 @@
+# Text files always with LF line endings, so scripts work on Linux and Android
+* text=auto eol=lf
+*.sh text eol=lf
+*.java text eol=lf
+*.py text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+
+# Binary: never touch them
+*.png binary
+*.jpg binary
+*.webp binary
+*.apk binary
+*.p12 binary

@@ -75,7 +75,7 @@ What can't be hidden: the HAL drops about one frame (≈33 ms) at the switch.
 
 ### Getting EIS to cooperate
 
-Two things the stock app does, found by reading its code, turned out to be essential:
+Two things the stock app does, found by inspecting it, turned out to be essential:
 
 - **EIS needs a vendor session mode.** Asking for `CONTROL_VIDEO_STABILIZATION_MODE` in a
   regular session crashes the camera HAL. The session has to be created with ZTE's
@@ -126,9 +126,15 @@ the old one.
 
 ## Testing over ADB
 
+The camera activity has to be open to other apps (the launcher starts it), so its test
+extras are **ignored unless you unlock them first** with a key file. Only ADB can create it:
+
 ```sh
-am start -n dev.gauchito.camara/.Camara --ei modo 0 --ei estab 1   # 4K 30 with EIS
-am start -n dev.gauchito.camara/.Camara --ez medir true            # zoom-ramp recording test
+K=/sdcard/Android/data/dev.gauchito.camara/files/pruebas
+adb shell touch $K                                                     # unlock the test hooks
+adb shell am start -n dev.gauchito.camara/.Camara --ei modo 0 --ei estab 1   # 4K 30 with EIS
+adb shell am start -n dev.gauchito.camara/.Camara --ez medir true            # zoom-ramp recording test
+adb shell rm $K                                                        # lock them again
 ```
 
 `modo`: 0 = 4K 30, 1 = 1080p 60, 2 = 1080p 30. `estab`: 0 = off, 1 = EIS, 2 = EIS+.
@@ -148,6 +154,12 @@ Working and in daily use, still being polished. On the list:
 - Ideas: slow motion (the camera supports constrained high-speed video), 10-bit / HDR,
   histogram, horizon level, focus peaking
 
+## Security
+
+The app only asks for the camera and the microphone, has no internet permission, and
+exposes nothing but its launcher screen. Read [SECURITY.md](SECURITY.md) for the full
+model, how to verify an APK's signature, and how to report a vulnerability privately.
+
 ## A note on language
 
 The code (identifiers and comments) is in Spanish, and so is the UI. Everything that
@@ -160,6 +172,7 @@ matters for understanding how it works is explained above.
 ## Disclaimer
 
 Not affiliated with, or endorsed by, Nubia, RedMagic, ZTE or Qualcomm. The vendor session
-modes were found by inspecting the behavior of the phone's own camera app. They're
-undocumented, may change with a firmware update, and are used at your own risk. In
-testing, a bad request only restarts the camera service. It doesn't harm the phone.
+modes were found by inspecting the phone's own camera app. They're undocumented, may change
+with a firmware update, and are used at your own risk. The app only uses them on the
+RedMagic 10 Pro, and only when its combined camera has the expected layout. In testing, a
+bad request only restarts the camera service. It doesn't harm the phone.

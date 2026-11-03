@@ -8,8 +8,8 @@
 #   y android.jar (plataforma 34) de Google.
 set -euo pipefail
 
-VERSION_CODE=6
-VERSION_NAME=3.0
+VERSION_CODE=7
+VERSION_NAME=3.1
 
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 H="$HOME/herramientas/android"
@@ -33,6 +33,9 @@ if [ ! -f "$FIRMA/camara.p12" ]; then
     -storepass:file "$FIRMA/clave.txt" 2>&1 | grep -v '^$' || true
   chmod 600 "$FIRMA/camara.p12"
 fi
+
+# La llave y su clave solo para este usuario, siempre (por si algo les cambió los permisos)
+chmod 700 "$FIRMA"; chmod 600 "$FIRMA/camara.p12" "$FIRMA/clave.txt"
 
 rm -rf "$B"; mkdir -p "$B/clases" "$B/dex"
 

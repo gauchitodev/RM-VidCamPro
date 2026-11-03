@@ -86,6 +86,10 @@ public class Camara extends Activity {
 
     /** Estabilización: apagada, normal, súper (modos de operación de NubiaCamera). */
     static final String[] NOMBRES_ESTAB = {"Estab. no", "Estab.", "Estab. +"};
+    /** El teléfono para el que están medidos los modos de sesión y el reparto del zoom. */
+    static final boolean ES_RM10PRO = "NX789J".equals(android.os.Build.MODEL) || "NX789J".equals(android.os.Build.DEVICE);
+    private boolean modosFabrica, avisoModelo;
+
     static int modoOperacion(int estab, int fps) {
         if (estab == 0) return fps == 60 ? 32772 : 0;
         if (fps == 60) return estab == 2 ? 32801 : 32800;
@@ -270,14 +274,11 @@ public class Camara extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("camara", MODE_PRIVATE);
-        modo = prefs.getInt("modo", 0);
-        estab = prefs.getInt("estab", 1);
+        modo = limitar(prefs.getInt("modo", 0), 0, MODOS.length - 1);
+        estab = limitar(prefs.getInt("estab", 1), 0, NOMBRES_ESTAB.length - 1);
         pro.cargar(prefs);
-        // pruebas por ADB: am start ... --ei modo 2 --ei estab 1
-        if (getIntent().hasExtra("modo")) modo = getIntent().getIntExtra("modo", 0);
-        if (getIntent().hasExtra("estab")) estab = getIntent().getIntExtra("estab", 1);
+        leerDatosDePrueba(getIntent());
         pro.fps = MODOS[modo][2];
-        medir = getIntent().getBooleanExtra("medir", false);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         motor = new Motor(this::infoCuadro, s -> registrar(s));
@@ -295,6 +296,36 @@ public class Camara extends Activity {
         }.enable();
     }
 
+    static int limitar(int v, int min, int max) { return Math.max(min, Math.min(max, v)); }
+
+    /**
+     * Ganchos de prueba por ADB (modo, estab, medir). Esta pantalla está abierta a otras apps
+     * (la abre el lanzador), así que solo valen si existe el archivo "pruebas" en la carpeta
+     * propia de la app: desde Android 11 ninguna otra app puede escribir ahí; ADB sí.
+     * Sin esa llave se ignoran: si no, cualquier app podría abrirnos con medir=true y
+     * hacernos grabar con cámara y micrófono, o mandar valores que nos cierren.
+     */
+    private void leerDatosDePrueba(Intent in) {
+        try {
+            if (in == null || in.getExtras() == null) return;
+            if (!in.hasExtra("modo") && !in.hasExtra("estab") && !in.hasExtra("medir")) return;
+            if (!pruebasHabilitadas()) { registrar("ignoré datos de prueba: falta la llave de pruebas"); return; }
+            if (in.hasExtra("modo")) modo = limitar(in.getIntExtra("modo", modo), 0, MODOS.length - 1);
+            if (in.hasExtra("estab")) estab = limitar(in.getIntExtra("estab", estab), 0, NOMBRES_ESTAB.length - 1);
+            medir = in.getBooleanExtra("medir", false);
+            registrar("pruebas por ADB: modo=" + modo + " estab=" + estab + " medir=" + medir);
+        } catch (RuntimeException e) {
+            // datos armados para romper (p. ej. un Parcelable que no se puede leer): se ignoran
+            registrar("datos de prueba ilegibles: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** La llave de pruebas: un archivo que solo ADB (o la propia app) puede crear. */
+    private boolean pruebasHabilitadas() {
+        File d = getExternalFilesDir(null);
+        return d != null && new File(d, "pruebas").isFile();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -306,6 +337,7 @@ public class Camara extends Activity {
             if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) faltan.add(p);
         if (!faltan.isEmpty()) { requestPermissions(faltan.toArray(new String[0]), 1); return; }
         if (vista.isAvailable()) fondo.post(this::abrir);
+        fondo.post(this::limpiarPendientes);
         fondo.post(this::buscarUltimoVideo);
         refrescarChips();
     }
@@ -325,14 +357,19 @@ public class Camara extends Activity {
         super.onPause();
     }
 
+    /** Calibración guardada del cambio de cámara; si está rota o es disparatada, se ignora. */
     private float[] leerCalib(String k) {
-        String v = prefs.getString(k, null);
-        if (v == null) return null;
-        String[] p = v.split(",");
-        if (p.length != 6) return null;
-        float[] f = new float[6];
-        for (int i = 0; i < 6; i++) f[i] = Float.parseFloat(p[i]);
-        return f;
+        try {
+            String v = prefs.getString(k, null);
+            if (v == null) return null;
+            String[] p = v.split(",");
+            if (p.length != 6) return null;
+            float[] f = new float[6];
+            for (int i = 0; i < 6; i++) f[i] = Float.parseFloat(p[i]);
+            return Motor.calibracionValida(f) ? f : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     @Override
@@ -626,9 +663,14 @@ public class Camara extends Activity {
 
     private final Runnable ocultarAviso = () -> aviso.setVisibility(View.GONE);
 
+    /** Registro de diagnóstico en la carpeta propia de la app; al pasar 256 KB se rota (queda uno anterior). */
     private void registrar(String s) {
-        try (FileWriter w = new FileWriter(new File(getExternalFilesDir(null), "registro.txt"), true)) {
-            w.write(new SimpleDateFormat("dd/MM HH:mm:ss.SSS", Locale.ROOT).format(new Date()) + " " + s + "\n");
+        try {
+            File f = new File(getExternalFilesDir(null), "registro.txt");
+            if (f.length() > 256 * 1024) f.renameTo(new File(f.getParentFile(), "registro.anterior.txt"));
+            try (FileWriter w = new FileWriter(f, true)) {
+                w.write(new SimpleDateFormat("dd/MM HH:mm:ss.SSS", Locale.ROOT).format(new Date()) + " " + s + "\n");
+            }
         } catch (Exception ignorado) {}
     }
 
@@ -727,6 +769,31 @@ public class Camara extends Activity {
 
     // ---------- galería ----------
 
+    /**
+     * Si la app se cerró en medio de una grabación, el video quedó "pendiente": invisible,
+     * sin terminar (no se puede reproducir) y en 4K puede pesar varios GB hasta que Android
+     * lo borre a la semana. Se borran los nuestros que hayan quedado así. Solo vemos y
+     * podemos borrar los pendientes propios, nunca los de otras apps.
+     */
+    private void limpiarPendientes() {
+        if (grabador != null) return;                    // grabando: el pendiente es el actual
+        Uri base = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        Bundle q = new Bundle();
+        q.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,
+                MediaStore.Video.Media.RELATIVE_PATH + " LIKE ? AND " + MediaStore.Video.Media.IS_PENDING + " = 1");
+        q.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, new String[]{"Movies/Camara%"});
+        q.putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE);
+        int n = 0;
+        try (Cursor c = getContentResolver().query(base, new String[]{MediaStore.Video.Media._ID}, q, null)) {
+            while (c != null && c.moveToNext()) {
+                Uri u = ContentUris.withAppendedId(base, c.getLong(0));
+                if (u.equals(video)) continue;
+                n += getContentResolver().delete(u, null, null);
+            }
+        } catch (Exception e) { registrar("limpiar pendientes: " + e); }
+        if (n > 0) registrar("borré " + n + " video(s) sin terminar de una grabación cortada");
+    }
+
     private void buscarUltimoVideo() {
         Uri base = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         try (Cursor c = getContentResolver().query(base, new String[]{MediaStore.Video.Media._ID},
@@ -768,12 +835,31 @@ public class Camara extends Activity {
             if (a != null) arraySensor = a;
             Float fm = c.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
             if (fm != null && fm > 0) pro.focoMin = fm;
+            modosFabrica = ES_RM10PRO && c.getPhysicalCameraIds().equals(new java.util.HashSet<>(java.util.Arrays.asList("0", "2")));
+            if (!modosFabrica && !avisoModelo) {
+                avisoModelo = true;
+                decir("Hecha para el RedMagic 10 Pro: acá, sin los modos de fábrica");
+                registrar("modelo " + android.os.Build.MODEL + ", físicas " + c.getPhysicalCameraIds() + ": sin modos de fábrica");
+            }
             cm.openCamera(CAMARA, new CameraDevice.StateCallback() {
                 public void onOpened(CameraDevice d) { camara = d; armarSesion(); }
                 public void onDisconnected(CameraDevice d) { d.close(); camara = null; }
-                public void onError(CameraDevice d, int e) { d.close(); camara = null; decir("Error de cámara " + e); }
+                public void onError(CameraDevice d, int e) { d.close(); camara = null; decir(errorDeCamara(e)); }
             }, fondo);
         } catch (Exception e) { decir("No pude abrir la cámara: " + e.getMessage()); }
+    }
+
+    /** Qué quiere decir cada error de la cámara (al volver a la app, se reabre sola). */
+    static String errorDeCamara(int e) {
+        switch (e) {
+            case CameraDevice.StateCallback.ERROR_CAMERA_IN_USE:
+            case CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE:
+                return "La cámara la está usando otra app";
+            case CameraDevice.StateCallback.ERROR_CAMERA_DISABLED:
+                return "Android cortó la cámara (pantalla bloqueada o en segundo plano)";
+            default:
+                return "La cámara falló (" + e + "): salí y volvé a entrar";
+        }
     }
 
     private void cerrar() {
@@ -822,7 +908,7 @@ public class Camara extends Activity {
             // con estabilización el HAL quiere una salida "de codificador" además de la vista;
             // se la damos con un lector que tira los cuadros, y el motor usa la otra
             if (lectorVideo != null) { lectorVideo.close(); lectorVideo = null; }
-            if (estab > 0) {
+            if (estab > 0 && modosFabrica) {
                 lectorVideo = android.media.ImageReader.newInstance(m[0], m[1], android.graphics.ImageFormat.PRIVATE, 4,
                         android.hardware.HardwareBuffer.USAGE_VIDEO_ENCODE);
                 lectorVideo.setOnImageAvailableListener(r -> { android.media.Image im = r.acquireLatestImage(); if (im != null) im.close(); }, fondo);
@@ -838,10 +924,15 @@ public class Camara extends Activity {
             if (lectorVideo != null) pedido.addTarget(lectorVideo.getSurface());
             pedido.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(fps, fps));
             zoomAlPedido(zoom);
-            pedido.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, estab > 0 ? 1 : 0);
+            // en el RedMagic, la estabilización en una sesión común tira abajo el servicio de cámara:
+            // ahí solo se pide dentro de los modos de fábrica; en otros teléfonos es lo estándar
+            boolean eisSeguro = modosFabrica || !ES_RM10PRO;
+            pedido.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, estab > 0 && eisSeguro ? 1 : 0);
             pro.aplicar(pedido);
 
-            int op = modoOperacion(estab, fps);
+            // los modos de operación de ZTE no están documentados: solo donde se midieron;
+            // en cualquier otro teléfono, una sesión común (la estabilización estándar anda ahí)
+            int op = modosFabrica ? modoOperacion(estab, fps) : SessionConfiguration.SESSION_REGULAR;
             final String desc = NOMBRES_MODO[modo] + " estab=" + estab + " op=" + op + " códec=" + Ajustes.CODEC_OP[pro.idx[Ajustes.CODEC]];
             registrar("armando sesión " + desc);
             SessionConfiguration sc = new SessionConfiguration(op, salidas, fondo::post,

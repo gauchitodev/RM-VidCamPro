@@ -232,6 +232,19 @@ final class Motor implements SurfaceTexture.OnFrameAvailableListener {
         });
     }
 
+    /**
+     * Una corrección razonable entre las dos cámaras: escala ±15 %, corrimiento hasta 15 %
+     * del cuadro y ganancias de color de 0,5 a 2. Fuera de eso es una mala medida.
+     * (Escrito al revés a propósito: un NaN no pasa ninguna comparación.)
+     */
+    static boolean calibracionValida(float[] f) {
+        if (f == null || f.length != 6) return false;
+        if (!(f[0] > 0.85f && f[0] < 1.18f)) return false;
+        if (!(Math.abs(f[1]) <= 0.15f && Math.abs(f[2]) <= 0.15f)) return false;
+        for (int i = 3; i < 6; i++) if (!(f[i] >= 0.5f && f[i] <= 2f)) return false;
+        return true;
+    }
+
     void calibracion(float[] subiendo, float[] bajando) { calib[0] = subiendo; calib[1] = bajando; }
     float[][] calibracion() { return calib; }
 
@@ -359,7 +372,7 @@ final class Motor implements SurfaceTexture.OnFrameAvailableListener {
             r.medir(viejo, nuevo);
             long ms = SystemClock.uptimeMillis() - a;
             float[] m = {r.escala, r.dx, r.dy, r.gr, r.gg, r.gb};
-            boolean confiable = r.calidad > 0.15f;
+            boolean confiable = r.calidad > 0.15f && calibracionValida(m);
             if (aviso != null) aviso.decir(String.format(java.util.Locale.ROOT,
                     "cambio %s: escala %.3f desp %.3f,%.3f color %.2f/%.2f/%.2f calidad %.2f (%d ms)%s",
                     fisNueva, m[0], m[1], m[2], m[3], m[4], m[5], r.calidad, ms, confiable ? "" : " DESCARTADA"));
